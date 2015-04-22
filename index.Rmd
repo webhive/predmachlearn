@@ -9,93 +9,159 @@ vignette: >
   \usepackage[utf8]{inputenc}
 ---
 
-https://gist.github.com/jeromyanglim/2716336
+# Prerequisites
 
-Vignettes are long form documentation commonly included in packages. Because they are part of the distribution of the package, they need to be as compact as possible. The `html_vignette` output type provides a custom style sheet (and tweaks some options) to ensure that the resulting html is as small as possible. The `html_vignette` format:
-
-- Never uses retina figures
-- Has a smaller default figure size
-- Uses a custom CSS stylesheet instead of the default Twitter Bootstrap style
-
-## Prepare for analyses
-```{r }
-set.seed(1234)
-library(ggplot2)
+```{r}
+library(knitr)
+opts_chunk$set(echo = TRUE, results = 'hold')
 library(lattice)
+library(ggplot2)
+library(caret)
+library(missForest)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(gbm)
+set.seed(1234)
 ```
 
-```{r basicconsole}
-x <- 1:10
-y <- round(rnorm(10, x, 1), 2)
-df <- data.frame(x, y)
-df
+# Input data
+
+Lets prepare common function to download an remember our source data. While import files also cleaning data from some misformatted values which obvioulsy mean absense of value (``NA``, ``#DIV/0!`` and just an empty cells).
+
+```{r}
+dir.create("./data", showWarnings = FALSE, recursive = TRUE, mode = "0777")
+
+loadData <- function(type) {
+  filename=paste("./data/", "pml-", type, ".csv", sep="")
+  if (!file.exists(filename)) {
+    url <- paste("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-", type ,".csv", sep="")
+    message(paste("Please Wait! Downloading...", url, "..."))
+    download.file(url, destfile=filename)
+  } 
+  data = read.csv(filename, header=TRUE, sep=",", na.strings=c("NA","#DIV/0!",""))
+  return(data)
+}
 ```
 
-## Plots
+Well - now lets load our data and prepare ``pmlTraining`` and ``pmlTesting`` datasets
 
-### Simple plot
-Here is a basic plot using base graphics:
- 
-```{r }
-  plot(x)
-```
- 
-```{r simpleplot}
-plot(x)
+```{r}
+pmlTraining <- loadData("training")
+pmlTesting  <- loadData("testing")
 ```
 
-### `ggplot2` plot
-Ggplot2 plots work well:
- 
-```{r ggplot2ex}
-qplot(x, y, data=df)
-```
- 
-### `lattice` plot
-As do lattice plots:
- 
-```{r latticeex}
-xyplot(y~x)
-```
- 
-## Vignette Info
+Lets briefly review our ``pmlTraining`` dataset
 
-Note the various macros within the `vignette` setion of the metadata block above. These are required in order to instruct R how to build the vignette. Note that you should change the `title` field and the `\VignetteIndexEntry` to match the title of your vignette.
-
-## Styles
-
-The `html_vignette` template includes a basic CSS theme. To override this theme you can specify your own CSS in the document metadata as follows:
-
-    output: 
-      rmarkdown::html_vignette:
-        css: mystyles.css
-
-## Figures
-
-The figure sizes have been customised so that you can easily put two images side-by-side. 
-
-```{r, fig.show='hold'}
-plot(1:10)
-plot(10:1)
+```{r}
+dim(pmlTraining) 
 ```
 
-You can enable figure captions by `fig_caption: yes` in YAML:
+So we have 160 columns so it mean 159 predictors - pretty big value. So its a good reason to think about some data cleaning. 
 
-    output:
-      rmarkdown::html_vignette:
-        fig_caption: yes
+# Prepare test data
 
-Then you can use the chunk option `fig.cap = "Your figure caption."` in **knitr**.
+## Split our source training dataset
 
-## More Examples
+Well now time to move close to research so lets split our ``training`` dataset using common 60%/40% rule. 
 
-You can write math expressions, e.g. $Y = X\beta + \epsilon$, footnotes^[A footnote here.], and tables, e.g. using `knitr::kable()`.
-
-```{r, echo=FALSE, results='asis'}
-knitr::kable(head(mtcars, 10))
+```{r}
+inTrain <- createDataPartition(y=pmlTraining$classe, p=0.6, list=FALSE)
+training <- pmlTraining[inTrain, ]
+testing  <- pmlTraining[-inTrain, ]
+dim(training); 
+dim(testing)
 ```
 
-Also a quote using `>`:
+## Cleanup training data
 
-> "He who gives up [code] safety for [code] speed deserves neither."
-([via](https://twitter.com/hadleywickham/status/504368538874703872))
+Now lets cleanup our training data. 
+
+### Remove columns with lot of NA
+
+Lets remove variables with more than 80% of NA values.  
+
+```{r}
+filledColumns = c((colSums(!is.na(training[,-ncol(training)])) >= 0.8*nrow(training)))
+training <- training[, filledColumns]
+testing  <- testing[, filledColumns]
+dim(training)
+dim(testing)
+```
+
+So as result we got 60 variables instead of 160
+
+### Remove near zero values
+
+Lets find 
+
+```{r}
+nzv <- nearZeroVar(training, saveMetrics=TRUE)
+training = subset(training, select=rownames(nzv[which(nzv$nzv==FALSE & nzv$zeroVar==FALSE),]))
+dim(training)
+```
+
+Not a big advantage because now we have 59 variables instead of 60 
+
+### Remove some known variable
+
+Lets remove 
+
+```{r}
+training = subset(training, select=c(-X -raw_timestamp_part_1, -raw_timestamp_part_2, -cvtd_timestamp))
+training = subset(training, select=c(-user_name))
+training = subset(training, select=c(-raw_timestamp_part_1))
+training = subset(training, select=c(-X))
+dim(training)
+```
+
+So finally we have only 56 predictors
+
+Now we can assume our training dataset clear and ready for later analysis 
+
+# Building models
+
+## Decision Tree
+
+```{r}
+modFit_DT <- rpart(classe~., data=training, method="class")
+prediction_DT <- predict(modFit_DT, testing, type="class")
+confusionMatrix(prediction_DT, testing$classe)
+```
+
+## Random Forests
+
+```{r}
+trainingRF <- missForest(training, ntree=100)
+# trainingRF = training
+modFit_RF <- randomForest(classe~., data=trainingRF$ximp)
+prediction_RF <- predict(modFit_RF, testing)
+confusionMatrix(prediction_RF, testing$classe)
+```
+
+# Generate files for submittin
+
+```{r}
+prediction <- predict(modFit_RF, pmlTesting, type="class")
+as.vector(prediction)
+
+dir.create("./submissions", showWarnings = FALSE, recursive = TRUE, mode = "0777")
+n <- length(prediction)
+for(i in 1:n){
+  filename <- paste0("./submissions/problem_id_",i,".txt")
+  write.table(prediction[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+}
+```
+
+# Useful links
+
+- http://topepo.github.io/caret/preprocess.html
+- http://lalashan.mcmaster.ca/theobio/mmed/images/3/36/DataClean.R
+- http://cran.r-project.org/doc/contrib/de_Jonge+van_der_Loo-Introduction_to_data_cleaning_with_R.pdf
+- http://www.sagepub.com/upm-data/45664_6.pdf
+- http://static1.squarespace.com/static/51156277e4b0b8b2ffe11c00/t/53ad86e5e4b0b52e4e71cfab/1403881189332/Applied_Predictive_Modeling_in_R.pdf
+- http://www.stat.berkeley.edu/~breiman/Using_random_forests_V3.1.pdf
+
+
+
