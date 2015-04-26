@@ -10,7 +10,7 @@
 
 <meta name="author" content="Roman Tataurov" />
 
-<meta name="date" content="2015-04-22" />
+<meta name="date" content="2015-04-26" />
 
 <title>Practical Machine Learning Course Project</title>
 
@@ -54,32 +54,41 @@ code > span.er { color: #ff0000; font-weight: bold; }
 <div id="header">
 <h1 class="title">Practical Machine Learning Course Project</h1>
 <h4 class="author"><em>Roman Tataurov</em></h4>
-<h4 class="date"><em>2015-04-22</em></h4>
+<h4 class="date"><em>2015-04-26</em></h4>
 </div>
 
 
-<div id="prerequisites" class="section level1">
-<h1>Prerequisites</h1>
+<div id="background" class="section level1">
+<h1>Background</h1>
+<p>Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly.</p>
+<p>In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.</p>
+</div>
+<div id="question" class="section level1">
+<h1>Question</h1>
+<p>The goal of your project is to predict the manner in which they did the exercise. This is the “classe” variable in the training set. Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.</p>
+</div>
+<div id="working-environment" class="section level1">
+<h1>Working environment</h1>
+<p>Lets load some libraries required and set a pseudo random seed.</p>
 <pre class="sourceCode r"><code class="sourceCode r"><span class="kw">library</span>(knitr)
 opts_chunk$<span class="kw">set</span>(<span class="dt">echo =</span> <span class="ot">TRUE</span>, <span class="dt">results =</span> <span class="st">'hold'</span>)
 <span class="kw">library</span>(lattice)
 <span class="kw">library</span>(ggplot2)
 <span class="kw">library</span>(caret)
-<span class="kw">library</span>(missForest)</code></pre>
-<pre><code>## Loading required package: randomForest
-## randomForest 4.6-10
-## Type rfNews() to see new features/changes/bug fixes.
-## Loading required package: foreach
-## Loading required package: itertools
-## Loading required package: iterators</code></pre>
-<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">library</span>(rpart)
+<span class="kw">library</span>(rpart)
 <span class="kw">library</span>(rpart.plot)
 <span class="kw">library</span>(rattle)</code></pre>
 <pre><code>## Rattle: A free graphical interface for data mining with R.
 ## Version 3.4.1 Copyright (c) 2006-2014 Togaware Pty Ltd.
 ## Type 'rattle()' to shake, rattle, and roll your data.</code></pre>
-<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">library</span>(randomForest)
-<span class="kw">library</span>(gbm)</code></pre>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">library</span>(randomForest)</code></pre>
+<pre><code>## randomForest 4.6-10
+## Type rfNews() to see new features/changes/bug fixes.</code></pre>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">library</span>(missForest)</code></pre>
+<pre><code>## Loading required package: foreach
+## Loading required package: itertools
+## Loading required package: iterators</code></pre>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">library</span>(gbm)</code></pre>
 <pre><code>## Loading required package: survival
 ## 
 ## Attaching package: 'survival'
@@ -91,7 +100,8 @@ opts_chunk$<span class="kw">set</span>(<span class="dt">echo =</span> <span clas
 ## Loading required package: splines
 ## Loading required package: parallel
 ## Loaded gbm 2.1.1</code></pre>
-<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">set.seed</span>(<span class="dv">1234</span>)</code></pre>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">library</span>(knitr)
+<span class="kw">set.seed</span>(<span class="dv">1234</span>)</code></pre>
 </div>
 <div id="input-data" class="section level1">
 <h1>Input data</h1>
@@ -131,7 +141,6 @@ testing  &lt;-<span class="st"> </span>pmlTraining[-inTrain, ]
 </div>
 <div id="cleanup-training-data" class="section level2">
 <h2>Cleanup training data</h2>
-<p>Now lets cleanup our training data.</p>
 <div id="remove-columns-with-lot-of-na" class="section level3">
 <h3>Remove columns with lot of NA</h3>
 <p>Lets remove variables with more than 80% of NA values.</p>
@@ -146,7 +155,7 @@ testing  &lt;-<span class="st"> </span>testing[, filledColumns]
 </div>
 <div id="remove-near-zero-values" class="section level3">
 <h3>Remove near zero values</h3>
-<p>Lets find</p>
+<p>Lets find covariance with variability close to zero and remove it.</p>
 <pre class="sourceCode r"><code class="sourceCode r">nzv &lt;-<span class="st"> </span><span class="kw">nearZeroVar</span>(training, <span class="dt">saveMetrics=</span><span class="ot">TRUE</span>)
 training =<span class="st"> </span><span class="kw">subset</span>(training, <span class="dt">select=</span><span class="kw">rownames</span>(nzv[<span class="kw">which</span>(nzv$nzv==<span class="ot">FALSE</span> &amp;<span class="st"> </span>nzv$zeroVar==<span class="ot">FALSE</span>),]))
 <span class="kw">dim</span>(training)</code></pre>
@@ -155,15 +164,14 @@ training =<span class="st"> </span><span class="kw">subset</span>(training, <spa
 </div>
 <div id="remove-some-known-variable" class="section level3">
 <h3>Remove some known variable</h3>
-<p>Lets remove</p>
+<p>Lets remove timestamp variables as well as user names and identifiers.</p>
 <pre class="sourceCode r"><code class="sourceCode r">training =<span class="st"> </span><span class="kw">subset</span>(training, <span class="dt">select=</span><span class="kw">c</span>(-X -raw_timestamp_part_1, -raw_timestamp_part_2, -cvtd_timestamp))
 training =<span class="st"> </span><span class="kw">subset</span>(training, <span class="dt">select=</span><span class="kw">c</span>(-user_name))
 training =<span class="st"> </span><span class="kw">subset</span>(training, <span class="dt">select=</span><span class="kw">c</span>(-raw_timestamp_part_1))
 training =<span class="st"> </span><span class="kw">subset</span>(training, <span class="dt">select=</span><span class="kw">c</span>(-X))
 <span class="kw">dim</span>(training)</code></pre>
 <pre><code>## [1] 11776    54</code></pre>
-<p>So finally we have only 56 predictors</p>
-<p>Now we can assume our training dataset clear and ready for later analysis</p>
+<p>So finally we have only 56 predictors Now we can assume our training dataset clear and ready for later analysis</p>
 </div>
 </div>
 </div>
@@ -171,9 +179,11 @@ training =<span class="st"> </span><span class="kw">subset</span>(training, <spa
 <h1>Building models</h1>
 <div id="decision-tree" class="section level2">
 <h2>Decision Tree</h2>
-<pre class="sourceCode r"><code class="sourceCode r">modFit_DT &lt;-<span class="st"> </span><span class="kw">rpart</span>(classe~., <span class="dt">data=</span>training, <span class="dt">method=</span><span class="st">&quot;class&quot;</span>)
+<pre class="sourceCode r"><code class="sourceCode r">training_DT &lt;-<span class="st"> </span>training
+modFit_DT &lt;-<span class="st"> </span><span class="kw">rpart</span>(classe~., <span class="dt">data=</span>training_DT, <span class="dt">method=</span><span class="st">&quot;class&quot;</span>)
 prediction_DT &lt;-<span class="st"> </span><span class="kw">predict</span>(modFit_DT, testing, <span class="dt">type=</span><span class="st">&quot;class&quot;</span>)
-<span class="kw">confusionMatrix</span>(prediction_DT, testing$classe)</code></pre>
+cm_DT &lt;-<span class="st"> </span><span class="kw">confusionMatrix</span>(prediction_DT, testing$classe)
+cm_DT</code></pre>
 <pre><code>## Confusion Matrix and Statistics
 ## 
 ##           Reference
@@ -208,49 +218,113 @@ prediction_DT &lt;-<span class="st"> </span><span class="kw">predict</span>(modF
 </div>
 <div id="random-forests" class="section level2">
 <h2>Random Forests</h2>
-<pre class="sourceCode r"><code class="sourceCode r">trainingRF &lt;-<span class="st"> </span><span class="kw">missForest</span>(training, <span class="dt">ntree=</span><span class="dv">100</span>)
-<span class="co"># trainingRF = training</span>
-modFit_RF &lt;-<span class="st"> </span><span class="kw">randomForest</span>(classe~., <span class="dt">data=</span>trainingRF$ximp)
-prediction_RF &lt;-<span class="st"> </span><span class="kw">predict</span>(modFit_RF, testing)
-<span class="kw">confusionMatrix</span>(prediction_RF, testing$classe)</code></pre>
+<p>Lets try Random Forests apprach without some preprocessing</p>
+<pre class="sourceCode r"><code class="sourceCode r">modFit_RF1 &lt;-<span class="st"> </span><span class="kw">randomForest</span>(classe~., <span class="dt">data=</span>training)
+prediction_RF1 &lt;-<span class="st"> </span><span class="kw">predict</span>(modFit_RF1, testing)
+cm_RF1 &lt;-<span class="st"> </span><span class="kw">confusionMatrix</span>(prediction_RF1, testing$classe)
+cm_RF1</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 2232    3    0    0    0
+##          B    0 1512    6    0    0
+##          C    0    3 1361   11    0
+##          D    0    0    1 1274    2
+##          E    0    0    0    1 1440
+## 
+## Overall Statistics
+##                                          
+##                Accuracy : 0.9966         
+##                  95% CI : (0.995, 0.9977)
+##     No Information Rate : 0.2845         
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16      
+##                                          
+##                   Kappa : 0.9956         
+##  Mcnemar's Test P-Value : NA             
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            1.0000   0.9960   0.9949   0.9907   0.9986
+## Specificity            0.9995   0.9991   0.9978   0.9995   0.9998
+## Pos Pred Value         0.9987   0.9960   0.9898   0.9977   0.9993
+## Neg Pred Value         1.0000   0.9991   0.9989   0.9982   0.9997
+## Prevalence             0.2845   0.1935   0.1744   0.1639   0.1838
+## Detection Rate         0.2845   0.1927   0.1735   0.1624   0.1835
+## Detection Prevalence   0.2849   0.1935   0.1752   0.1628   0.1837
+## Balanced Accuracy      0.9997   0.9975   0.9964   0.9951   0.9992</code></pre>
+<p>Previusly we already removed columns with more than 80% of NA values. Lets impute missing values with <code>missForest</code> function.</p>
+<pre class="sourceCode r"><code class="sourceCode r">training_RF &lt;-<span class="st"> </span><span class="kw">missForest</span>(training, <span class="dt">ntree=</span><span class="dv">100</span>)
+modFit_RF2 &lt;-<span class="st"> </span><span class="kw">randomForest</span>(classe~., <span class="dt">data=</span>training_RF$ximp)
+prediction_RF2 &lt;-<span class="st"> </span><span class="kw">predict</span>(modFit_RF2, testing)
+cm_RF2 &lt;-<span class="st"> </span><span class="kw">confusionMatrix</span>(prediction_RF2, testing$classe)
+cm_RF2</code></pre>
 <pre><code>##   missForest iteration 1 in progress...done!
 ##   missForest iteration 2 in progress...done!
 ## Confusion Matrix and Statistics
 ## 
 ##           Reference
 ## Prediction    A    B    C    D    E
-##          A 2232    4    0    0    0
-##          B    0 1512    5    0    0
-##          C    0    2 1361   10    0
-##          D    0    0    2 1275    2
+##          A 2232    5    0    0    0
+##          B    0 1510    6    0    0
+##          C    0    3 1361   11    0
+##          D    0    0    1 1274    2
 ##          E    0    0    0    1 1440
 ## 
 ## Overall Statistics
 ##                                           
-##                Accuracy : 0.9967          
-##                  95% CI : (0.9951, 0.9978)
+##                Accuracy : 0.9963          
+##                  95% CI : (0.9947, 0.9975)
 ##     No Information Rate : 0.2845          
 ##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
 ##                                           
-##                   Kappa : 0.9958          
+##                   Kappa : 0.9953          
 ##  Mcnemar's Test P-Value : NA              
 ## 
 ## Statistics by Class:
 ## 
 ##                      Class: A Class: B Class: C Class: D Class: E
-## Sensitivity            1.0000   0.9960   0.9949   0.9914   0.9986
-## Specificity            0.9993   0.9992   0.9981   0.9994   0.9998
-## Pos Pred Value         0.9982   0.9967   0.9913   0.9969   0.9993
-## Neg Pred Value         1.0000   0.9991   0.9989   0.9983   0.9997
+## Sensitivity            1.0000   0.9947   0.9949   0.9907   0.9986
+## Specificity            0.9991   0.9991   0.9978   0.9995   0.9998
+## Pos Pred Value         0.9978   0.9960   0.9898   0.9977   0.9993
+## Neg Pred Value         1.0000   0.9987   0.9989   0.9982   0.9997
 ## Prevalence             0.2845   0.1935   0.1744   0.1639   0.1838
-## Detection Rate         0.2845   0.1927   0.1735   0.1625   0.1835
-## Detection Prevalence   0.2850   0.1933   0.1750   0.1630   0.1837
-## Balanced Accuracy      0.9996   0.9976   0.9965   0.9954   0.9992</code></pre>
+## Detection Rate         0.2845   0.1925   0.1735   0.1624   0.1835
+## Detection Prevalence   0.2851   0.1932   0.1752   0.1628   0.1837
+## Balanced Accuracy      0.9996   0.9969   0.9964   0.9951   0.9992</code></pre>
+<p>Imputing results are comparable but finally worse a little 0.9963 vs 09967 accuracy corrspondingly for imputet and raw data.</p>
 </div>
 </div>
-<div id="generate-files-for-submittin" class="section level1">
-<h1>Generate files for submittin</h1>
-<pre class="sourceCode r"><code class="sourceCode r">prediction &lt;-<span class="st"> </span><span class="kw">predict</span>(modFit_RF, pmlTesting, <span class="dt">type=</span><span class="st">&quot;class&quot;</span>)
+<div id="conclusions" class="section level1">
+<h1>Conclusions</h1>
+<p>So we can see what Decision Tree algorithm has worse accuracy than Random Forests - 0.7239 vs 0.9967 correspondingly. So our final decision is Random Forests algorithm without impute.</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Model</th>
+<th align="right">Accuracy</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Desision Tree</td>
+<td align="right">0.724</td>
+</tr>
+<tr class="even">
+<td align="left">Random Forest</td>
+<td align="right">0.997</td>
+</tr>
+<tr class="odd">
+<td align="left">Random Forest with impute</td>
+<td align="right">0.996</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="generate-files-for-submittion" class="section level1">
+<h1>Generate files for submittion</h1>
+<pre class="sourceCode r"><code class="sourceCode r">prediction &lt;-<span class="st"> </span><span class="kw">predict</span>(modFit_RF1, pmlTesting, <span class="dt">type=</span><span class="st">&quot;class&quot;</span>)
 <span class="kw">as.vector</span>(prediction)
 
 <span class="kw">dir.create</span>(<span class="st">&quot;./submissions&quot;</span>, <span class="dt">showWarnings =</span> <span class="ot">FALSE</span>, <span class="dt">recursive =</span> <span class="ot">TRUE</span>, <span class="dt">mode =</span> <span class="st">&quot;0777&quot;</span>)
@@ -261,17 +335,6 @@ for(i in <span class="dv">1</span>:n){
 }</code></pre>
 <pre><code>##  [1] &quot;B&quot; &quot;A&quot; &quot;B&quot; &quot;A&quot; &quot;A&quot; &quot;E&quot; &quot;D&quot; &quot;B&quot; &quot;A&quot; &quot;A&quot; &quot;B&quot; &quot;C&quot; &quot;B&quot; &quot;A&quot; &quot;E&quot; &quot;E&quot; &quot;A&quot;
 ## [18] &quot;B&quot; &quot;B&quot; &quot;B&quot;</code></pre>
-</div>
-<div id="useful-links" class="section level1">
-<h1>Useful links</h1>
-<ul>
-<li><a href="http://topepo.github.io/caret/preprocess.html" class="uri">http://topepo.github.io/caret/preprocess.html</a></li>
-<li><a href="http://lalashan.mcmaster.ca/theobio/mmed/images/3/36/DataClean.R" class="uri">http://lalashan.mcmaster.ca/theobio/mmed/images/3/36/DataClean.R</a></li>
-<li><a href="http://cran.r-project.org/doc/contrib/de_Jonge+van_der_Loo-Introduction_to_data_cleaning_with_R.pdf" class="uri">http://cran.r-project.org/doc/contrib/de_Jonge+van_der_Loo-Introduction_to_data_cleaning_with_R.pdf</a></li>
-<li><a href="http://www.sagepub.com/upm-data/45664_6.pdf" class="uri">http://www.sagepub.com/upm-data/45664_6.pdf</a></li>
-<li><a href="http://static1.squarespace.com/static/51156277e4b0b8b2ffe11c00/t/53ad86e5e4b0b52e4e71cfab/1403881189332/Applied_Predictive_Modeling_in_R.pdf" class="uri">http://static1.squarespace.com/static/51156277e4b0b8b2ffe11c00/t/53ad86e5e4b0b52e4e71cfab/1403881189332/Applied_Predictive_Modeling_in_R.pdf</a></li>
-<li><a href="http://www.stat.berkeley.edu/~breiman/Using_random_forests_V3.1.pdf" class="uri">http://www.stat.berkeley.edu/~breiman/Using_random_forests_V3.1.pdf</a></li>
-</ul>
 </div>
 
 

@@ -9,7 +9,19 @@ vignette: >
   \usepackage[utf8]{inputenc}
 ---
 
-# Prerequisites
+# Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly. 
+
+In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+# Question
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. 
+
+# Working environment
+
+Lets load some libraries required and set a pseudo random seed.
 
 ```{r}
 library(knitr)
@@ -17,12 +29,13 @@ opts_chunk$set(echo = TRUE, results = 'hold')
 library(lattice)
 library(ggplot2)
 library(caret)
-library(missForest)
 library(rpart)
 library(rpart.plot)
 library(rattle)
 library(randomForest)
+library(missForest)
 library(gbm)
+library(knitr)
 set.seed(1234)
 ```
 
@@ -76,8 +89,6 @@ dim(testing)
 
 ## Cleanup training data
 
-Now lets cleanup our training data. 
-
 ### Remove columns with lot of NA
 
 Lets remove variables with more than 80% of NA values.  
@@ -94,7 +105,7 @@ So as result we got 60 variables instead of 160
 
 ### Remove near zero values
 
-Lets find 
+Lets find covariance with variability close to zero and remove it.
 
 ```{r}
 nzv <- nearZeroVar(training, saveMetrics=TRUE)
@@ -106,7 +117,7 @@ Not a big advantage because now we have 59 variables instead of 60
 
 ### Remove some known variable
 
-Lets remove 
+Lets remove timestamp variables as well as user names and identifiers.
 
 ```{r}
 training = subset(training, select=c(-X -raw_timestamp_part_1, -raw_timestamp_part_2, -cvtd_timestamp))
@@ -117,7 +128,6 @@ dim(training)
 ```
 
 So finally we have only 56 predictors
-
 Now we can assume our training dataset clear and ready for later analysis 
 
 # Building models
@@ -125,25 +135,51 @@ Now we can assume our training dataset clear and ready for later analysis
 ## Decision Tree
 
 ```{r}
-modFit_DT <- rpart(classe~., data=training, method="class")
+training_DT <- training
+modFit_DT <- rpart(classe~., data=training_DT, method="class")
 prediction_DT <- predict(modFit_DT, testing, type="class")
-confusionMatrix(prediction_DT, testing$classe)
+cm_DT <- confusionMatrix(prediction_DT, testing$classe)
+cm_DT
 ```
 
 ## Random Forests
 
+Lets try Random Forests apprach without some preprocessing 
+
 ```{r}
-trainingRF <- missForest(training, ntree=100)
-# trainingRF = training
-modFit_RF <- randomForest(classe~., data=trainingRF$ximp)
-prediction_RF <- predict(modFit_RF, testing)
-confusionMatrix(prediction_RF, testing$classe)
+modFit_RF1 <- randomForest(classe~., data=training)
+prediction_RF1 <- predict(modFit_RF1, testing)
+cm_RF1 <- confusionMatrix(prediction_RF1, testing$classe)
+cm_RF1
 ```
 
-# Generate files for submittin
+Previusly we already removed columns with more than 80% of NA values. Lets impute missing values with ``missForest`` function.
 
 ```{r}
-prediction <- predict(modFit_RF, pmlTesting, type="class")
+training_RF <- missForest(training, ntree=100)
+modFit_RF2 <- randomForest(classe~., data=training_RF$ximp)
+prediction_RF2 <- predict(modFit_RF2, testing)
+cm_RF2 <- confusionMatrix(prediction_RF2, testing$classe)
+cm_RF2
+```
+
+Imputing results are comparable but finally worse a little 0.9963 vs 09967 accuracy corrspondingly for imputet and raw data.
+
+# Conclusions
+
+So we can see what Decision Tree algorithm has worse accuracy than Random Forests - 0.7239 vs 0.9967 correspondingly. So our final decision is Random Forests algorithm without impute. 
+
+```{r, echo=FALSE, results="asis"}
+modelsSummary = data.frame(
+  m=c("Desision Tree", "Random Forest", "Random Forest with impute"), 
+  r=c(round(cm_DT$overall[1],3), round(cm_RF1$overall[1],3), round(cm_RF2$overall[1],3)))
+kable(modelsSummary, col.names=c("Model", "Accuracy"))
+```
+
+# Generate files for submittion
+
+```{r}
+prediction <- predict(modFit_RF1, pmlTesting, type="class")
 as.vector(prediction)
 
 dir.create("./submissions", showWarnings = FALSE, recursive = TRUE, mode = "0777")
@@ -153,15 +189,3 @@ for(i in 1:n){
   write.table(prediction[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
 }
 ```
-
-# Useful links
-
-- http://topepo.github.io/caret/preprocess.html
-- http://lalashan.mcmaster.ca/theobio/mmed/images/3/36/DataClean.R
-- http://cran.r-project.org/doc/contrib/de_Jonge+van_der_Loo-Introduction_to_data_cleaning_with_R.pdf
-- http://www.sagepub.com/upm-data/45664_6.pdf
-- http://static1.squarespace.com/static/51156277e4b0b8b2ffe11c00/t/53ad86e5e4b0b52e4e71cfab/1403881189332/Applied_Predictive_Modeling_in_R.pdf
-- http://www.stat.berkeley.edu/~breiman/Using_random_forests_V3.1.pdf
-
-
-
